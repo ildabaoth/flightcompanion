@@ -19,7 +19,14 @@ telemetry_data = {
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        return f"Error loading template: {e}", 500
+
+@app.route("/ping")
+def ping():
+    return "PONG - Relay Server is Alive"
 
 @app.route("/api/telemetry", methods=["GET"])
 def get_telemetry():

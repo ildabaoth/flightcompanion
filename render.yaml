@@ -3,7 +3,7 @@ services:
     name: fs-companion-relay
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn relay_server:app
+    startCommand: gunicorn -b 0.0.0.0:$PORT relay_server:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0 # Render standard

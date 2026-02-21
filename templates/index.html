@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSFS 24 Flight Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #header {
+            background-color: #2c3e50;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+        }
+
+        #container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 300px;
+            background-color: #252525;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.3);
+        }
+
+        #map {
+            flex: 1;
+        }
+
+        .gauge {
+            background-color: #333;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+
+        .gauge h3 {
+            margin: 0 0 0.5rem 0;
+            font-size: 0.9rem;
+            color: #bdc3c7;
+        }
+
+        .gauge .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .gauge .unit {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="header">
+        <h1>Virtual Copilot Dashboard</h1>
+    </div>
+    <div id="container">
+        <div id="sidebar">
+            <div class="gauge">
+                <h3>ALTITUDE</h3>
+                <div id="alt" class="value">0</div><span class="unit">FT</span>
+            </div>
+            <div class="gauge">
+                <h3>AIRSPEED</h3>
+                <div id="spd" class="value">0</div><span class="unit">KTS</span>
+            </div>
+            <div class="gauge">
+                <h3>HEADING</h3>
+                <div id="hdg" class="value">0</div><span class="unit">°</span>
+            </div>
+            <div class="gauge">
+                <h3>VERT SPEED</h3>
+                <div id="vs" class="value">0</div><span class="unit">FPM</span>
+            </div>
+            <div class="gauge">
+                <h3>LOCATION</h3>
+                <div id="coords" style="font-size: 0.8rem; color: #bdc3c7;">0.00, 0.00</div>
+            </div>
+            <button id="report-btn" style="
+                background-color: #e67e22; 
+                color: white; 
+                border: none; 
+                padding: 1rem; 
+                border-radius: 8px; 
+                cursor: pointer; 
+                font-weight: bold;
+                transition: background 0.3s;
+            " onmouseover="this.style.backgroundColor='#d35400'" onmouseout="this.style.backgroundColor='#e67e22'">
+                📢 STATUS REPORT
+            </button>
+            <a id="download-link" href="/static/status_report.wav" download style="
+                display: none;
+                text-align: center;
+                color: #3498db;
+                text-decoration: none;
+                font-size: 0.9rem;
+                margin-top: 0.5rem;
+            ">⬇️ Download Last Report</a>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        document.getElementById('report-btn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/report', { method: 'POST' });
+                // Show download link after a short delay (once file is generated)
+                setTimeout(() => {
+                    const link = document.getElementById('download-link');
+                    link.style.display = 'block';
+                    // Force cache refresh for the audio file
+                    link.href = '/static/status_report.wav?t=' + new Date().getTime();
+                }, 1000);
+            } catch (error) {
+                console.error('Error requesting report:', error);
+            }
+        });
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const aircraftIcon = L.divIcon({
+            className: 'aircraft-icon',
+            html: '<div style="transform: rotate(0deg); font-size: 24px;">✈️</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        const marker = L.marker([0, 0], { icon: aircraftIcon }).addTo(map);
+        let firstPos = true;
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/telemetry');
+                const data = await response.json();
+
+                document.getElementById('alt').innerText = Math.round(data.altitude);
+                document.getElementById('spd').innerText = Math.round(data.airspeed);
+                document.getElementById('hdg').innerText = Math.round(data.heading);
+                document.getElementById('vs').innerText = Math.round(data.vertical_speed);
+                document.getElementById('coords').innerText = `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+
+                const pos = [data.latitude, data.longitude];
+                marker.setLatLng(pos);
+
+                // Rotate the icon based on heading
+                marker.getElement().querySelector('div').style.transform = `rotate(${data.heading - 45}deg)`;
+
+                if (firstPos && (data.latitude !== 0 || data.longitude !== 0)) {
+                    map.setView(pos, 10);
+                    firstPos = false;
+                } else if (!firstPos) {
+                    // Smoothly follow aircraft
+                    // map.panTo(pos); 
+                }
+
+            } catch (error) {
+                console.error('Error fetching telemetry:', error);
+            }
+        }
+
+        setInterval(updateDashboard, 1000);
+    </script>
+</body>
+
+</html>
